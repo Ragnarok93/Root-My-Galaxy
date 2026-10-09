@@ -10,7 +10,7 @@ import androidx.lifecycle.ViewModel
  */
 internal class InvestigationSession : ViewModel() {
     val report = mutableStateOf<InvestigationReport?>(null)
-    val imported = mutableStateOf<FirmwareInspection?>(null)
+    val imported = mutableStateOf<List<FirmwareInspection>>(emptyList())
     val kernelConfig = mutableStateOf<KernelConfigCapture?>(null)
     val status = mutableStateOf("Not yet collected")
 }
