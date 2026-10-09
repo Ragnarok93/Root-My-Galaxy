@@ -25,6 +25,36 @@ the phone. For example, `6.6.98-android15-8-...` matches `6.6.98`. Advanced
 mode filters the catalog by both values and allows manual selection with model
 and kernel-version warnings.
 
+## Investigation workspace (experimental)
+
+The **Investigate** tab is a research-only workspace for collecting device and
+firmware facts before attempting a new kernel exploit port. It does **not**
+add the Galaxy S20+ to the installable catalog or launch an exploit.
+
+On Android 11+:
+
+1. In Developer options, enable Wireless debugging.
+2. In the Shizuku manager, pair with Android's wireless-debugging pairing code
+   and start its service (repeat startup after a reboot).
+3. In Investigate, select Refresh, then Authorize.
+4. Select Collect via Shizuku for read-only shell probes; App snapshot works
+   without Shizuku.
+5. Export JSON using the Android document picker. Review before sharing.
+
+Shizuku's ADB-shell mode is **not root** and cannot extract protected boot,
+vendor_boot or other partitions on a locked phone. If available, Read config.gz
+extracts the running kernel's /proc/config.gz, while Save config.gz exports its
+original gzip bytes. Inspect firmware file can identify and SHA-256 hash a
+user-selected boot image or LZ4 file up to 256 MiB; it does not unpack Samsung
+firmware archives.
+
+Diagnostics use a fixed read-only command allowlist, timeouts and output caps.
+No arbitrary shell commands, kernel-address dumps, root payload execution, or
+automatic uploads occur in this workspace.
+
+S20+ investigation record:
+https://github.com/Ragnarok93/Root-My-Galaxy-Payloads/blob/feature/s20plus-investigation-shizuku-20261009/docs/SM-G986U1-HXL1-INVESTIGATION.md
+
 ## Build
 
 Requirements:
