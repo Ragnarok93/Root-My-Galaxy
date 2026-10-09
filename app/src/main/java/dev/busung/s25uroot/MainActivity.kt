@@ -219,6 +219,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class AppPage(@StringRes val label: Int, val icon: ImageVector) {
     Overview(R.string.nav_overview, Icons.Rounded.Home),
+    Investigation(R.string.nav_investigation, Icons.Rounded.Code),
     History(R.string.nav_history, Icons.Rounded.History),
     Settings(R.string.nav_settings, Icons.Rounded.Settings),
 }
@@ -492,6 +493,7 @@ private fun RootApp(
                         }
                     },
                 )
+                AppPage.Investigation -> InvestigationPage(padding)
                 AppPage.History -> HistoryPage(
                     padding,
                     history,
