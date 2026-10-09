@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 internal fun InvestigationPage(padding: PaddingValues) {
@@ -44,10 +45,11 @@ internal fun InvestigationPage(padding: PaddingValues) {
     var shizukuRunning by remember { mutableStateOf(false) }
     var shizukuGranted by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Not yet collected") }
-    var report by remember { mutableStateOf<InvestigationReport?>(null) }
-    var imported by remember { mutableStateOf<FirmwareInspection?>(null) }
-    var kernelConfig by remember { mutableStateOf<KernelConfigCapture?>(null) }
+    val session: InvestigationSession = viewModel()
+    var status by session.status
+    var report by session.report
+    var imported by session.imported
+    var kernelConfig by session.kernelConfig
     var expanded by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
