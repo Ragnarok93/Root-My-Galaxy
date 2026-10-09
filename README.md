@@ -44,9 +44,19 @@ On Android 11+:
 Shizuku's ADB-shell mode is **not root** and cannot extract protected boot,
 vendor_boot or other partitions on a locked phone. If available, Read config.gz
 extracts the running kernel's /proc/config.gz, while Save config.gz exports its
-original gzip bytes. Inspect firmware file can identify and SHA-256 hash a
-user-selected boot image or LZ4 file up to 256 MiB; it does not unpack Samsung
-firmware archives.
+original gzip bytes. **Firmware package analysis** accepts multiple user-selected AP, BL, CP, CSC,
+and HOME_CSC Odin `.tar` / `.tar.md5` files directly. It reads their TAR
+headers and compressed image signatures *in place* to show partition names,
+sizes, category, compression type, and 64-bit data offsets without extracting
+images or copying multi-gigabyte data into app storage. It also indexes ZIP and
+ZIP64 central directories without decompressing them; ZIP entries that contain
+nested TAR packages must be selected separately to see their partitions.
+User-supplied `.enc4` / `.enc2` packages are identified as encrypted and
+require offline decryption. A local seekable file is required; non-seekable
+cloud content providers may need the archive downloaded locally first.
+Automatic SHA-256 is limited to files 32 MiB or smaller, so an uncomputed hash
+must not be interpreted as a verified one. The in-app **Export inventory JSON**
+action includes all selected archive entries and warnings without uploading.
 
 Diagnostics use a fixed read-only command allowlist, timeouts and output caps.
 No arbitrary shell commands, kernel-address dumps, root payload execution, or
