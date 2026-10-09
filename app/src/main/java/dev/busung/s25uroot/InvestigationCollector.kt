@@ -4,12 +4,10 @@ import android.os.Build
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.time.Instant
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -182,36 +180,40 @@ internal object InvestigationCollector {
     private suspend fun capture(probe: DiagnosticProbe): DiagnosticObservation =
         withContext(Dispatchers.IO) {
             var process: Process? = null
+            // Read stdout and stderr concurrently to prevent OS pipe-buffer deadlocks.
+            // Executor futures have bounded waits even if the remote process ignores termination.
+            val readers = Executors.newFixedThreadPool(2) { runnable ->
+                Thread(runnable, "investigation-probe-reader").apply { isDaemon = true }
+            }
             try {
-                coroutineScope {
-                    val current = ShizukuController.exec(probe.command.toTypedArray())
-                    process = current
-                    val stdout = async(Dispatchers.IO) { limitedText(current.inputStream) }
-                    val stderr = async(Dispatchers.IO) { limitedText(current.errorStream) }
-                    val finished = current.waitFor(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-                    if (!finished) current.destroyForcibly()
-                    val out = withTimeoutOrNull(1500L) { stdout.await() }.orEmpty().trim()
-                    val err = withTimeoutOrNull(1500L) { stderr.await() }.orEmpty().trim()
-                    val code = if (finished) runCatching { current.exitValue() }.getOrDefault(-1) else -1
-                    val outcome = when {
-                        !finished -> ProbeOutcome.TIMED_OUT
-                        code == 0 && !out.startsWith("Unavailable:") -> ProbeOutcome.OK
-                        code == 0 || err.contains("Permission denied", ignoreCase = true) ->
-                            ProbeOutcome.UNAVAILABLE
-                        else -> ProbeOutcome.FAILED
-                    }
-                    DiagnosticObservation(
-                        id = probe.id, description = probe.description, outcome = outcome,
-                        output = out, detail = if (!finished) "Command timed out" else err.take(512),
-                    )
+                val current = ShizukuController.exec(probe.command.toTypedArray())
+                process = current
+                val stdout = readers.submit<String> { limitedText(current.inputStream) }
+                val stderr = readers.submit<String> { limitedText(current.errorStream) }
+                val finished = current.waitFor(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                if (!finished) current.destroyForcibly()
+                val out = runCatching { stdout.get(1500, TimeUnit.MILLISECONDS) }.getOrDefault("").trim()
+                val err = runCatching { stderr.get(1500, TimeUnit.MILLISECONDS) }.getOrDefault("").trim()
+                val code = if (finished) runCatching { current.exitValue() }.getOrDefault(-1) else -1
+                val outcome = when {
+                    !finished -> ProbeOutcome.TIMED_OUT
+                    code == 0 && !out.startsWith("Unavailable:") -> ProbeOutcome.OK
+                    code == 0 || err.contains("Permission denied", ignoreCase = true) ->
+                        ProbeOutcome.UNAVAILABLE
+                    else -> ProbeOutcome.FAILED
                 }
-            } catch (error: Exception) {
+                DiagnosticObservation(
+                    id = probe.id, description = probe.description, outcome = outcome,
+                    output = out, detail = if (!finished) "Command timed out" else err.take(512),
+                )
+            } catch (exception: Exception) {
                 DiagnosticObservation(
                     probe.id, probe.description, ProbeOutcome.FAILED, "",
-                    error.javaClass.simpleName + ": " + (error.message ?: "Unknown failure"),
+                    exception.javaClass.simpleName + ": " + (exception.message ?: "Unknown failure"),
                 )
             } finally {
                 process?.let { runCatching { it.destroy() } }
+                readers.shutdownNow()
             }
         }
 
