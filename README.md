@@ -58,6 +58,26 @@ Automatic SHA-256 is limited to files 32 MiB or smaller, so an uncomputed hash
 must not be interpreted as a verified one. The in-app **Export inventory JSON**
 action includes all selected archive entries and warnings without uploading.
 
+### Selective boot image extraction
+
+From **Investigate → Firmware package analysis**, select a matching Samsung
+firmware **ZIP** (including the XAA factory ZIP) or a direct **AP_*.tar.md5**.
+The resulting firmware card has **Extract boot.img.lz4**. Tap it and choose
+a SAF destination. The app streams only `boot.img.lz4` to that destination,
+reports scan progress, allows cancellation, and computes the *extracted file's*
+SHA-256. For a ZIP, it locates the embedded AP TAR.MD5 and streams the TAR
+entry without saving the multi-gigabyte AP intermediary or modifying firmware.
+
+**Important:** the extraction returns the original LZ4-compressed boot image,
+not `boot.img` or a kernel ELF. The AP ZIP CRC or Odin MD5 footer is not
+verified when extraction stops early; the reported SHA-256 only covers the
+saved `boot.img.lz4`. A provider that does not support deleting documents
+may leave a partial output on cancellation or error; remove it before reuse.
+The source must be readable from Android's document picker and the destination
+must have sufficient free space for the boot image. No root, Shizuku, flashing,
+or external upload is needed.
+
+
 Diagnostics use a fixed read-only command allowlist, timeouts and output caps.
 No arbitrary shell commands, kernel-address dumps, root payload execution, or
 automatic uploads occur in this workspace.
