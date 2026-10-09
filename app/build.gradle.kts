@@ -5,7 +5,12 @@ plugins {
 
 android {
     namespace = "dev.busung.s25uroot"
-    compileSdk = 36
+    // Android 17 platform is published as platforms;android-37.0, not android-37.
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
 
     defaultConfig {
         applicationId = "dev.busung.s25uroot"
