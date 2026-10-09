@@ -124,7 +124,11 @@ internal object BootImageExtractor {
                 checkCancelled()
                 // InputStream.skip is efficient for a local TAR; ZIP input
                 // streams inflate to discard without writing to storage.
-                val skipped = source.skip(min(remaining, 1024L * 1024L))
+                // InflaterInputStream.skip may internally discard using tiny
+                // buffers. Read ZIP entry data with our 128-KiB scratch buffer
+                // instead; only seekable/plain TAR input uses skip().
+                val skipped = if (source is ZipInputStream) 0L else
+                    source.skip(min(remaining, 1024L * 1024L))
                 if (skipped > 0) {
                     remaining -= skipped
                     bump(skipped)
