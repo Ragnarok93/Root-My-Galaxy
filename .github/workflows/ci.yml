@@ -28,7 +28,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-35 cmake;3.22.1'
+          packages: 'platform-tools platforms;android-35 platforms;android-37 cmake;3.22.1'
           accept-android-sdk-licenses: true
 
       - name: Setup NDK
@@ -38,6 +38,9 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Run JVM unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
