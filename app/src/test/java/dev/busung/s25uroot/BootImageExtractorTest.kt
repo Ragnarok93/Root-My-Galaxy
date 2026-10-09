@@ -29,7 +29,7 @@ class BootImageExtractorTest {
         assertEquals(null, result.packageEntry)
         assertEquals(lz4.size.toLong(), result.sizeBytes)
         assertEquals(
-            "e55cc4ba9c8949258b65282a82088b229d29d48e6c07e084786b5c8aa3e4b8b5",
+            "33f72dfec4bdbda4c604d6b54118d2bce3568213f784dce413ccff2079480862",
             result.sha256,
         )
     }
