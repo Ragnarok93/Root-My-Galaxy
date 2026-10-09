@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -66,7 +65,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
                     withContext(Dispatchers.IO) {
                         context.contentResolver.openOutputStream(uri)?.use {
                             it.write(current.copy(firmware = imported).asJson().toByteArray(Charsets.UTF_8))
-                        } ?: error("Cannot open the destination document")
+                        } ?: kotlin.error("Cannot open the destination document")
                     }
                 }.onSuccess {
                     status = "Report exported locally"
@@ -136,8 +135,8 @@ internal fun InvestigationPage(padding: PaddingValues) {
                             "3. Return here, refresh and authorize this app. After reboot, restart Shizuku.",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         OutlinedButton(onClick = {
@@ -154,7 +153,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
                             context.startActivity(intent)
                         }) { Text("Shizuku") }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = refreshConnection) {
                             Text("Refresh")
                         }
@@ -195,7 +194,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
                     )
                     if (busy) CircularProgressIndicator()
                     Text(status, style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             enabled = !busy,
                             onClick = {
