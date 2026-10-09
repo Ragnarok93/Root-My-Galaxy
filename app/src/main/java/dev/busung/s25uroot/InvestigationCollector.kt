@@ -117,10 +117,13 @@ internal object InvestigationCollector {
             listOf("/system/bin/cat", "/proc/modules")))
         add(DiagnosticProbe("kernel.trace_event", "sched_blocked_reason event ID",
             listOf("/system/bin/sh", "-c", """
-                for f in /sys/kernel/tracing/events/sched/sched_blocked_reason/id /sys/kernel/debug/tracing/events/sched/sched_blocked_reason/id; do
-                    if [ -r "${' ]; then cat "$f"; exit; fi
-                done
-                echo 'Unavailable: tracefs event ID is not readable by shell'
+                if [ -r /sys/kernel/tracing/events/sched/sched_blocked_reason/id ]; then
+                    cat /sys/kernel/tracing/events/sched/sched_blocked_reason/id
+                elif [ -r /sys/kernel/debug/tracing/events/sched/sched_blocked_reason/id ]; then
+                    cat /sys/kernel/debug/tracing/events/sched/sched_blocked_reason/id
+                else
+                    echo 'Unavailable: tracefs event ID is not readable by shell'
+                fi
             """.trimIndent())))
         add(DiagnosticProbe("kernel.kallsyms", "Kernel symbols readability (no addresses collected)",
             listOf("/system/bin/sh", "-c", """
