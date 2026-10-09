@@ -47,6 +47,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
     var status by remember { mutableStateOf("Not yet collected") }
     var report by remember { mutableStateOf<InvestigationReport?>(null) }
     var imported by remember { mutableStateOf<FirmwareInspection?>(null) }
+    var kernelConfig by remember { mutableStateOf<KernelConfigCapture?>(null) }
     var expanded by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -72,6 +73,24 @@ internal fun InvestigationPage(padding: PaddingValues) {
                 }.onFailure { exception ->
                     error = exception.message ?: "Could not export report"
                 }
+            }
+        }
+    }
+
+    val kernelConfigExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/gzip"),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    val current = checkNotNull(kernelConfig) { "No extracted kernel config available" }
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                            out.write(current.bytes)
+                        } ?: kotlin.error("Unable to open kernel config destination")
+                    }
+                }.onSuccess { status = "Kernel config exported" }
+                    .onFailure { error = it.message ?: "Config export failed" }
             }
         }
     }
@@ -229,6 +248,54 @@ internal fun InvestigationPage(padding: PaddingValues) {
                                 }
                             },
                         ) { Text("Collect via Shizuku") }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("Extract accessible kernel config", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "If /proc/config.gz is accessible to the authorized Shizuku shell, " +
+                            "capture the original gzip bytes and save them with Android's document picker. " +
+                            "This is not a firmware partition dump and will fail safely when access is blocked.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(
+                        enabled = shizukuRunning && shizukuGranted && !busy,
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                error = null
+                                status = "Reading exposed kernel configuration"
+                                runCatching { KernelConfigReader.read() }
+                                    .onSuccess {
+                                        kernelConfig = it
+                                        status = "Kernel config captured (not saved yet)"
+                                    }
+                                    .onFailure {
+                                        error = it.message ?: "Kernel config unavailable"
+                                        status = "Kernel config unavailable under ADB-shell permissions"
+                                    }
+                                busy = false
+                            }
+                        },
+                    ) { Text("Read config.gz") }
+                    kernelConfig?.let { config ->
+                        Text(
+                            config.sizeBytes.toString() + " bytes\nSHA-256: " + config.sha256,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = { kernelConfigExporter.launch("S20plus-kernel-config.gz") },
+                        ) { Text("Save config.gz") }
                     }
                 }
             }
