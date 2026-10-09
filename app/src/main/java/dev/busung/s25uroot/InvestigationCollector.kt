@@ -32,7 +32,7 @@ internal data class InvestigationReport(
     val transport: String,
     val device: Map<String, String>,
     val observations: List<DiagnosticObservation>,
-    val firmware: FirmwareInspection? = null,
+    val firmwarePackages: List<FirmwareInspection> = emptyList(),
 ) {
     fun asJson(): String {
         val deviceJson = JSONObject()
@@ -57,14 +57,33 @@ internal data class InvestigationReport(
                 put("Boot and vendor partitions are not readable through stock shell access.")
                 put("Matching a kernel version does not verify exploit compatibility.")
             })
-        firmware?.let {
-            result.put("importedFirmware", JSONObject()
-                .put("name", it.name)
-                .put("sizeBytes", it.sizeBytes)
-                .put("sha256", it.sha256)
-                .put("format", it.format)
-                .put("bootHeaderVersion", it.bootHeaderVersion ?: JSONObject.NULL))
-        }
+        result.put("firmwarePackages", JSONArray().apply {
+            firmwarePackages.forEach { pkg ->
+                val parts = JSONArray()
+                pkg.entries.forEach { entry ->
+                    parts.put(JSONObject()
+                        .put("path", entry.path)
+                        .put("category", entry.category)
+                        .put("format", entry.format)
+                        .put("sizeBytes", entry.sizeBytes)
+                        .put("compressedBytes", entry.compressedBytes ?: JSONObject.NULL)
+                        .put("payloadOffset", entry.payloadOffset ?: JSONObject.NULL)
+                        .put("note", entry.note))
+                }
+                val warnings = JSONArray()
+                pkg.warnings.forEach { warnings.put(it) }
+                put(JSONObject()
+                    .put("name", pkg.name)
+                    .put("packageRole", pkg.packageRole)
+                    .put("sizeBytes", pkg.sizeBytes)
+                    .put("sha256", pkg.sha256 ?: JSONObject.NULL)
+                    .put("format", pkg.format)
+                    .put("bootHeaderVersion", pkg.bootHeaderVersion ?: JSONObject.NULL)
+                    .put("truncated", pkg.truncated)
+                    .put("warnings", warnings)
+                    .put("entries", parts))
+            }
+        })
         return result.toString(2)
     }
 }
