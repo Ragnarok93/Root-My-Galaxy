@@ -5,6 +5,7 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import moe.shizuku.server.IRemoteProcess
@@ -109,7 +110,27 @@ object ShizukuController {
         override fun getOutputStream(): OutputStream = output
         override fun getErrorStream(): InputStream = error
         override fun waitFor(): Int = remote.waitFor()
-        override fun exitValue(): Int = remote.exitValue()
+
+        /**
+         * Shizuku's IRemoteProcess.exitValue() throws IllegalArgumentException while
+         * running, unlike java.lang.Process.exitValue() which must throw
+         * IllegalThreadStateException. The default Process.waitFor(timeout) polls
+         * exitValue() using the Java exception contract, so it failed every probe.
+         * Poll the remote alive flag instead, without querying the exit value early.
+         */
+        override fun waitFor(timeout: Long, unit: TimeUnit): Boolean =
+            RemoteProcessTimeout.awaitExit(timeout, unit) { remote.alive() }
+
+        override fun exitValue(): Int = try {
+            remote.exitValue()
+        } catch (error: IllegalArgumentException) {
+            if (remote.alive()) {
+                throw IllegalThreadStateException("Remote process has not exited").apply {
+                    initCause(error)
+                }
+            }
+            throw error
+        }
 
         override fun destroy() {
             runCatching { remote.destroy() }
