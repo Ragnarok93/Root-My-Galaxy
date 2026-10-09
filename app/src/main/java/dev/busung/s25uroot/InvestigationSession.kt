@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -81,7 +82,7 @@ internal class InvestigationSession : ViewModel() {
                     // Best effort remove a partially written document. SAF providers
                     // may decline deletion; disclose that case rather than leaving
                     // a partial image silently labeled as valid.
-                    partialDeleted = withContext(Dispatchers.IO) {
+                    partialDeleted = withContext(NonCancellable + Dispatchers.IO) {
                         runCatching {
                             DocumentsContract.deleteDocument(appContext.contentResolver, destination)
                         }.getOrDefault(false)
