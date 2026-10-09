@@ -232,7 +232,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
                                     runCatching {
                                         InvestigationCollector.collect(useShizuku = false)
                                     }.onSuccess {
-                                        report = it.copy(firmware = imported)
+                                        report = it.copy(firmwarePackages = imported)
                                         status = "App-only snapshot complete"
                                     }.onFailure { error = it.message }
                                     busy = false
@@ -250,7 +250,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
                                             scope.launch { status = "Probe " + index + "/" + total + ": " + label }
                                         }
                                     }.onSuccess {
-                                        report = it.copy(firmware = imported)
+                                        report = it.copy(firmwarePackages = imported)
                                         status = "Shizuku diagnostics complete"
                                     }.onFailure { error = it.message ?: "Collection failed" }
                                     busy = false
