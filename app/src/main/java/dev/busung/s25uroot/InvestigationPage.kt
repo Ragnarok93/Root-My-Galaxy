@@ -51,6 +51,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
     var imported by session.imported
     var kernelConfig by session.kernelConfig
     var expanded by remember { mutableStateOf<String?>(null) }
+    var expandedPackage by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     val refreshConnection = {
@@ -64,10 +65,10 @@ internal fun InvestigationPage(padding: PaddingValues) {
         if (uri != null) {
             scope.launch {
                 runCatching {
-                    val current = checkNotNull(report) { "No investigation report available" }
+                    val current = report ?: InvestigationReport(java.time.Instant.now().toString(), "APP_ONLY", InvestigationCollector.snapshot(), emptyList())
                     withContext(Dispatchers.IO) {
                         context.contentResolver.openOutputStream(uri)?.use {
-                            it.write(current.copy(firmware = imported).asJson().toByteArray(Charsets.UTF_8))
+                            it.write(current.copy(firmwarePackages = imported).asJson().toByteArray(Charsets.UTF_8))
                         } ?: kotlin.error("Cannot open the destination document")
                     }
                 }.onSuccess {
@@ -98,23 +99,29 @@ internal fun InvestigationPage(padding: PaddingValues) {
     }
 
     val firmwarePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
-            scope.launch {
-                busy = true
-                error = null
-                status = "Inspecting selected firmware file"
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) scope.launch {
+            busy = true
+            error = null
+            var count = 0
+            val failures = mutableListOf<String>()
+            val updated = imported.toMutableList()
+            uris.take(12).forEachIndexed { index, uri ->
+                status = "Inspecting package " + (index + 1) + "/" + minOf(uris.size, 12)
                 runCatching { FirmwareInspector.inspect(context, uri) }
                     .onSuccess {
-                        imported = it
-                        status = "Firmware file inspected locally"
+                        updated.removeAll { current -> current.name == it.name }
+                        updated.add(it)
+                        imported = updated.toList()
+                        count++
                     }
-                    .onFailure { exception ->
-                        error = exception.message ?: "Could not inspect file"
-                    }
-                busy = false
+                    .onFailure { failures += (it.message ?: "Unable to inspect file") }
             }
+            if (uris.size > 12) failures += "Limit of 12 files per selection."
+            if (failures.isNotEmpty()) error = failures.take(3).joinToString("\n")
+            status = "Indexed $count firmware package(s)"
+            busy = false
         }
     }
 
@@ -305,29 +312,90 @@ internal fun InvestigationPage(padding: PaddingValues) {
 
         item {
             Card {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text("Offline firmware analysis", style = MaterialTheme.typography.titleMedium)
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Firmware package analysis", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Select a previously obtained boot.img or boot.img.lz4 to identify its " +
-                            "format, boot header version and SHA-256. The app cannot extract the " +
-                            "full Samsung AP archive or read protected partitions using shell access.",
+                        "Select AP, BL, CP, CSC or HOME_CSC TAR.MD5 files directly, or a Samsung " +
+                            "firmware ZIP. Indexed partition names, sizes, offsets and formats are " +
+                            "shown without extracting or decompressing the firmware.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = { firmwarePicker.launch(arrayOf("*/*")) },
-                    ) { Text("Inspect firmware file") }
-                    imported?.let {
+                    Button(enabled = !busy, onClick = { firmwarePicker.launch(arrayOf("*/*")) }) {
+                        Text("Select firmware packages")
+                    }
+                    if (imported.isNotEmpty()) {
                         Text(
-                            it.name + "\n" + it.format + "\n" + it.sizeBytes +
-                                " bytes\nSHA-256: " + it.sha256 +
-                                (it.bootHeaderVersion?.let { version -> "\nBoot header: v" + version } ?: ""),
+                            imported.size.toString() + " packages · " +
+                                imported.sumOf { it.entries.size } + " entries",
                             style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
                         )
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = { reportExporter.launch("RootMyGalaxy-firmware-inventory.json") },
+                        ) { Text("Export inventory JSON") }
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = { imported = emptyList(); expandedPackage = null },
+                        ) { Text("Clear packages") }
+                    }
+                    Text(
+                        "Read-only local-file access. Cloud document providers may require a " +
+                            "local copy for random access. ZIP contents are listed but nested TAR " +
+                            "packages require selecting the TAR directly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        imported.forEach { pkg ->
+            item(key = "package-" + pkg.name) {
+                Card {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(pkg.name, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            pkg.packageRole + " · " + pkg.format + " · " +
+                                pkg.entries.size + " files · " + pkg.sizeBytes + " bytes",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            "SHA-256: " + (pkg.sha256 ?: "Not calculated (over 32 MiB)"),
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        pkg.bootHeaderVersion?.let { Text("Boot header: v$it") }
+                        pkg.warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        if (pkg.entries.isNotEmpty()) {
+                            OutlinedButton(onClick = {
+                                expandedPackage = if (expandedPackage == pkg.name) null else pkg.name
+                            }) {
+                                Text(if (expandedPackage == pkg.name) "Hide partitions" else "Show partitions")
+                            }
+                        }
+                    }
+                }
+            }
+            if (expandedPackage == pkg.name) {
+                items(pkg.entries, key = { "entry-" + pkg.name + "-" + it.path }) { entry ->
+                    Card {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(entry.path, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                entry.category + " · " + entry.format + " · " + entry.sizeBytes + " bytes",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            entry.compressedBytes?.let { Text("Compressed: $it bytes", style = MaterialTheme.typography.bodySmall) }
+                            entry.payloadOffset?.let { Text("TAR data offset: $it", style = MaterialTheme.typography.bodySmall) }
+                            Text(
+                                entry.note,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
