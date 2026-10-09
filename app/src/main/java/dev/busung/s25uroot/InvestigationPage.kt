@@ -49,6 +49,11 @@ internal fun InvestigationPage(padding: PaddingValues) {
     var status by session.status
     var report by session.report
     var imported by session.imported
+    var selectedSources by session.selectedSources
+    var pendingBootSource by session.pendingBootSource
+    val extracting by session.extracting
+    val extractionStatus by session.extractionStatus
+    val extractionResult by session.extractionResult
     var kernelConfig by session.kernelConfig
     var expanded by remember { mutableStateOf<String?>(null) }
     var expandedPackage by remember { mutableStateOf<String?>(null) }
@@ -114,6 +119,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
                         updated.removeAll { current -> current.name == it.name }
                         updated.add(it)
                         imported = updated.toList()
+                        selectedSources = selectedSources + (it.name to uri)
                         count++
                     }
                     .onFailure { failures += (it.message ?: "Unable to inspect file") }
@@ -122,6 +128,18 @@ internal fun InvestigationPage(padding: PaddingValues) {
             if (failures.isNotEmpty()) error = failures.take(3).joinToString("\n")
             status = "Indexed $count firmware package(s)"
             busy = false
+        }
+    }
+
+    val bootExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { destination ->
+        val source = pendingBootSource
+        pendingBootSource = null
+        if (destination != null && source != null) {
+            val selectedName = selectedSources.entries.firstOrNull { it.value == source }?.key
+                ?: "firmware-package"
+            session.extractBoot(context, source, selectedName, destination)
         }
     }
 
@@ -320,7 +338,7 @@ internal fun InvestigationPage(padding: PaddingValues) {
                             "shown without extracting or decompressing the firmware.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    Button(enabled = !busy, onClick = { firmwarePicker.launch(arrayOf("*/*")) }) {
+                    Button(enabled = !busy && !extracting, onClick = { firmwarePicker.launch(arrayOf("*/*")) }) {
                         Text("Select firmware packages")
                     }
                     if (imported.isNotEmpty()) {
@@ -330,13 +348,34 @@ internal fun InvestigationPage(padding: PaddingValues) {
                             style = MaterialTheme.typography.bodySmall,
                         )
                         OutlinedButton(
-                            enabled = !busy,
+                            enabled = !busy && !extracting,
                             onClick = { reportExporter.launch("RootMyGalaxy-firmware-inventory.json") },
                         ) { Text("Export inventory JSON") }
                         OutlinedButton(
-                            enabled = !busy,
-                            onClick = { imported = emptyList(); expandedPackage = null },
+                            enabled = !busy && !extracting,
+                            onClick = {
+                                imported = emptyList()
+                                selectedSources = emptyMap()
+                                expandedPackage = null
+                            },
                         ) { Text("Clear packages") }
+                    }
+                    if (extracting) {
+                        CircularProgressIndicator()
+                        Text(extractionStatus, style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = session::cancelBootExtraction) {
+                            Text("Cancel boot extraction")
+                        }
+                    } else if (extractionStatus.isNotBlank()) {
+                        Text(extractionStatus, style = MaterialTheme.typography.bodySmall)
+                    }
+                    extractionResult?.let { extracted ->
+                        Text(
+                            "Extracted: " + extracted.sourceEntry + "\n" +
+                                extracted.sizeBytes + " bytes\nSHA-256: " + extracted.sha256,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                     Text(
                         "Read-only local-file access. Cloud document providers may require a " +
@@ -366,6 +405,18 @@ internal fun InvestigationPage(padding: PaddingValues) {
                         )
                         pkg.bootHeaderVersion?.let { Text("Boot header: v$it") }
                         pkg.warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        if ((pkg.packageRole == "AP" ||
+                                pkg.format.startsWith("ZIP")) &&
+                            selectedSources.containsKey(pkg.name)
+                        ) {
+                            Button(
+                                enabled = !busy && !extracting,
+                                onClick = {
+                                    pendingBootSource = selectedSources[pkg.name]
+                                    bootExporter.launch("boot.img.lz4")
+                                },
+                            ) { Text("Extract boot.img.lz4") }
+                        }
                         if (pkg.entries.isNotEmpty()) {
                             OutlinedButton(onClick = {
                                 expandedPackage = if (expandedPackage == pkg.name) null else pkg.name
